@@ -1,0 +1,21 @@
+{
+  "name": "tv-price-stock-updater-functions",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "dry-run": "DRY_RUN=true node src/cli.js",
+    "test": "node --test"
+  },
+  "main": "src/firebase.js",
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "firebase-functions": "^6.4.0",
+    "googleapis": "^159.0.0",
+    "p-limit": "^7.1.1"
+  }
+}
