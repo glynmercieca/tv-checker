@@ -44,32 +44,6 @@ GitHub Actions is the simplest option for this workload. The included workflow r
 
 Never commit the service-account JSON file.
 
-## Firebase alternative
-
-Firebase is supported by the included second-generation scheduled function. It is useful if this already belongs in a Firebase/Google Cloud project, but scheduled functions require Cloud Scheduler and a billing-capable project.
-
-```bash
-npm install -g firebase-tools
-cp .firebaserc.example .firebaserc
-# Edit .firebaserc with your project ID.
-cd functions && npm install && cd ..
-firebase deploy --only functions:updateTvPrices
-```
-
-Enable the Sheets API in that Google Cloud project, then share the spreadsheet with the runtime service account shown for the deployed function in Google Cloud IAM. Firebase uses Application Default Credentials; do not add a JSON key to the function.
-
-Set the Brevo credentials and email addresses before deploying:
-
-```bash
-firebase functions:secrets:set BREVO_SMTP_USER
-firebase functions:secrets:set BREVO_SMTP_KEY
-firebase functions:secrets:set EMAIL_TO
-firebase functions:secrets:set EMAIL_FROM
-firebase deploy --only functions:updateTvPrices
-```
-
-The scheduled function runs once daily at 07:17 `Europe/Malta`. It connects to `smtp-relay.brevo.com:465` using TLS.
-
 ## Local dry run
 
 ```bash
