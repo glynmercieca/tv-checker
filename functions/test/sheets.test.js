@@ -19,7 +19,7 @@ test("reads existing rows and returns the next unused row", async () => {
   assert.deepEqual(result.products.map((item) => item.row), [2, 4]);
 });
 
-test("appends A:G and applies currency/text formats", async () => {
+test("appends A:L and applies currency/text formats", async () => {
   const calls = [];
   const sheets = {
     spreadsheets: {
@@ -33,8 +33,13 @@ test("appends A:G and applies currency/text formats", async () => {
   await appendProducts(sheets, { spreadsheetId: "id", sheetName: "Sheet2" }, [{
     retailer: "Shop", brand: "Brand", model: "TV85", year: "2026",
     url: "https://example.com/tv", price: "€1,099.00", stock: "In stock",
+    panelTechnology: "Mini LED", refreshRate: "144 Hz", os: "Google TV",
+    vrr: "Yes", hdmi21: "Yes",
   }], 40);
-  assert.equal(calls[0][1].range, "'Sheet2'!A40:G40");
+  assert.equal(calls[0][1].range, "'Sheet2'!A40:L40");
   assert.equal(calls[0][1].requestBody.values[0][5], 1099);
+  assert.deepEqual(calls[0][1].requestBody.values[0].slice(7), [
+    "Mini LED", "144 Hz", "Google TV", "Yes", "Yes",
+  ]);
   assert.equal(calls[1][1].requestBody.requests[0].repeatCell.range.startRowIndex, 39);
 });

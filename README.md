@@ -1,6 +1,6 @@
 # TV price and stock updater
 
-Reads the product links in `Sheet2!E2:E`, checks each retailer, and updates `F:G` (Price and Stock). It also searches each represented retailer for newly listed 85-inch TVs, appends new listings in `A:G`, and emails a status report after every run. It is preconfigured for the supplied **85\" TVs** spreadsheet.
+Reads the product links in `Sheet2!E2:E`, checks each retailer, and updates `F:G` (Price and Stock). It also searches each represented retailer for newly listed 85-inch TVs, appends new listings in `A:L`, and emails a status report after every run. It is preconfigured for the supplied **85\" TVs** spreadsheet.
 
 The scraper prefers structured product data (JSON-LD), then standard product metadata and focused stock text. For WooCommerce shops it also tries the public Store API. If parsing is uncertain or a retailer presents an anti-bot page, that row is skipped: the existing sheet values are not overwritten.
 
@@ -10,7 +10,7 @@ Discovery currently covers all retailers represented in the sheet:
 - The Atrium and Klikk: their published product sitemaps.
 - Scan Malta: its Magento product catalog API.
 
-A candidate is appended only when its product title explicitly says **85 inch**, **85\"**, or **85″**. Model numbers merely containing `85` are not enough. Existing URLs are canonicalized before comparison, and unavailable candidates are rejected. Newly added rows contain retailer, brand, model/title, year when present in the title, URL, price, and stock; technical specification columns `H:V` stay blank for later enrichment.
+A candidate is appended only when its product title explicitly says **85 inch**, **85\"**, or **85″**. Model numbers merely containing `85` are not enough. Existing URLs are canonicalized before comparison, and unavailable candidates are rejected. Newly added rows contain retailer, brand, model/title, year when present in the title, URL, price, stock, panel technology, refresh rate, operating system, VRR support, and HDMI 2.1 support. Specifications are extracted from structured data, labelled product tables, and focused product-page text; a retailer omission is recorded as `Not listed` rather than guessed.
 
 ## Email service: Brevo Free
 
@@ -62,7 +62,7 @@ npm start
 
 - Source columns: URL in E, current price in F, current stock in G.
 - Writes are batched and limited to changed F:G rows.
-- New listings are written to A:G; H:V remain empty.
+- New listings are written to A:L, including the five technical fields in H:L.
 - Every completed run sends an HTML and plain-text report listing modifications, additions, and skipped checks. A failed email causes the job to fail visibly.
 - Brevo is the default transport. Generic `SMTP_USER`, `SMTP_PASS`, `SMTP_HOST`, `SMTP_PORT`, and `SMTP_SECURE` variables remain supported for migration to another TLS SMTP provider.
 - `DISCOVERY_ENABLED=false` disables catalog discovery without disabling price checks.

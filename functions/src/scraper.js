@@ -83,6 +83,111 @@ function offerCandidates(product) {
   return candidates;
 }
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function specificationPairs($) {
+  const pairs = [];
+  $("table tr").each((_, row) => {
+    const cells = $(row).find("th, td").map((__, cell) => cleanText($(cell).text())).get();
+    if (cells.length >= 2 && cells[0] && cells.at(-1)) pairs.push([cells[0], cells.at(-1)]);
+  });
+  $("dt").each((_, term) => {
+    const value = cleanText($(term).next("dd").text());
+    if (value) pairs.push([cleanText($(term).text()), value]);
+  });
+  return pairs;
+}
+
+function labelledValue(pairs, pattern) {
+  return pairs.find(([label]) => pattern.test(label))?.[1] || "";
+}
+
+function normalizePanel(value) {
+  const match = cleanText(value).match(
+    /\b(?:SQD[- ]?Mini\s*LED|QD[- ]?Mini\s*LED|Mini\s*LED|QD[- ]?OLED|OLED|QLED|Direct\s*LED|DLED|Edge\s*LED|LED\s*LCD|LCD)\b/i,
+  )?.[0];
+  if (!match) return "";
+  return match
+    .replace(/sqd[- ]?mini\s*led/i, "SQD-Mini LED")
+    .replace(/qd[- ]?mini\s*led/i, "QD-Mini LED")
+    .replace(/mini\s*led/i, "Mini LED")
+    .replace(/qd[- ]?oled/i, "QD-OLED")
+    .replace(/direct\s*led/i, "Direct LED")
+    .replace(/edge\s*led/i, "Edge LED")
+    .replace(/led\s*lcd/i, "LED LCD")
+    .toUpperCase()
+    .replace("DIRECT LED", "Direct LED")
+    .replace("EDGE LED", "Edge LED")
+    .replace("MINI LED", "Mini LED");
+}
+
+function normalizeRefreshRate(value) {
+  const clean = cleanText(value);
+  const rate =
+    clean.match(/\b(\d{2,3})\s*hz\b(?=[^.!;]{0,30}\b(?:native|refresh))/i)?.[1] ||
+    clean.match(/\b(?:native|refresh rate)[^\d]{0,20}(\d{2,3})\s*hz\b/i)?.[1] ||
+    clean.match(/^\s*(\d{2,3})\s*hz\b/i)?.[1];
+  return rate ? `${rate} Hz` : "";
+}
+
+function normalizeOs(value) {
+  const clean = cleanText(value);
+  if (/\bGoogle TV\b/i.test(clean)) return "Google TV";
+  if (/\bAndroid TV\b/i.test(clean)) return "Android TV";
+  if (/\bTitan OS\b/i.test(clean)) return "Titan OS";
+  if (/\bVIDAA\b/i.test(clean)) return "VIDAA";
+  if (/\bwebOS\b/i.test(clean)) return "webOS";
+  if (/\bTizen\b/i.test(clean)) return "Tizen";
+  if (/\bRoku TV\b/i.test(clean)) return "Roku TV";
+  if (/\bFire TV\b/i.test(clean)) return "Fire TV";
+  return "";
+}
+
+function normalizeSupport(value, positivePattern) {
+  const clean = cleanText(value);
+  if (/\b(?:no|not supported|none)\b/i.test(clean)) return "No";
+  if (/\b(?:yes|supported|available)\b/i.test(clean) || positivePattern.test(clean)) return "Yes";
+  return "";
+}
+
+function extractTechnicalSpecs($, products, bodyText) {
+  const pairs = specificationPairs($);
+  const structuredText = products.flatMap((product) => [
+    product.name,
+    product.description,
+    ...arrays(product.additionalProperty).flatMap((property) => [property?.name, property?.value]),
+  ]).join(" ");
+  const focusedText = cleanText($(
+    ".woocommerce-product-details__short-description, .woocommerce-Tabs-panel, .product-info-main, .product-detail, main",
+  ).text());
+  const sourceText = cleanText(`${structuredText} ${focusedText || bodyText}`);
+
+  const panelValue = labelledValue(
+    pairs,
+    /\b(?:panel|display|screen)\s*(?:technology|type)\b|\bpanel\b/i,
+  );
+  const refreshValue = labelledValue(pairs, /\b(?:native\s*)?refresh\s*rate\b|\bfrequency\b/i);
+  const osValue = labelledValue(pairs, /\boperating system\b|\bsmart\s*(?:tv\s*)?(?:platform|os)\b|^os$/i);
+  const vrrValue = labelledValue(pairs, /\b(?:vrr|variable refresh rate)\b/i);
+  const hdmiValue = labelledValue(pairs, /\bhdmi\s*(?:version|2[.]1)\b/i);
+
+  return {
+    panelTechnology: normalizePanel(panelValue) || normalizePanel(sourceText),
+    refreshRate: normalizeRefreshRate(refreshValue) || normalizeRefreshRate(sourceText),
+    os: normalizeOs(osValue) || normalizeOs(sourceText),
+    vrr: normalizeSupport(vrrValue, /\b(?:vrr|variable refresh rate|free\s*sync|g-sync)\b/i) ||
+      (/\b(?:vrr|variable refresh rate|free\s*sync|g-sync)\b/i.test(sourceText) ? "Yes" : ""),
+    hdmi21: normalizeSupport(hdmiValue, /\bhdmi\s*2[.]1\b/i) ||
+      (/\bhdmi\s*2[.]1\b/i.test(sourceText) ? "Yes" : ""),
+  };
+}
+
+function withTechnicalSpecs(result, specs) {
+  return Object.values(specs).some(Boolean) ? { ...result, specs } : result;
+}
+
 function parseDocument(html) {
   const $ = cheerio.load(html);
   const bodyText = $("body").text().replace(/\s+/g, " ").trim();
@@ -90,19 +195,21 @@ function parseDocument(html) {
     throw new Error("Retailer returned an anti-bot verification page");
   }
 
-  for (const product of jsonLdProducts($)) {
+  const products = jsonLdProducts($);
+  const specs = extractTechnicalSpecs($, products, bodyText);
+  for (const product of products) {
     const offers = offerCandidates(product);
     const availableOffer = offers.find((offer) => stockFromAvailability(offer.availability) === "In stock");
     const offer = availableOffer || offers[0];
     const price = formatEuro(offer?.price ?? offer?.lowPrice);
     const stock = stockFromAvailability(offer?.availability) || stockFromText(product.name || "");
     if (price || stock) {
-      return {
+      return withTechnicalSpecs({
         price,
         stock,
         title: String(product.name || "").replace(/\s+/g, " ").trim() || null,
         source: "JSON-LD",
-      };
+      }, specs);
     }
   }
 
@@ -142,7 +249,7 @@ function parseDocument(html) {
   if (!price && !stock) throw new Error("Could not confidently locate price or stock");
   const title = $("h1").first().text().replace(/\s+/g, " ").trim() ||
     $("title").text().split("|")[0].replace(/\s+/g, " ").trim() || null;
-  return { price, stock, title, source: "page markup" };
+  return withTechnicalSpecs({ price, stock, title, source: "page markup" }, specs);
 }
 
 async function fetchHtml(url, { userAgent, requestTimeoutMs }) {
@@ -178,12 +285,15 @@ async function tryWooStoreApi(url, options) {
   const rawPrice = Number(product.prices?.price);
   const price = Number.isFinite(rawPrice) ? formatEuro(rawPrice / 10 ** minorUnit) : null;
   const stock = product.is_in_stock === true ? "In stock" : product.is_in_stock === false ? "Out of stock" : null;
-  return {
+  const detailHtml = `<main><h1>${product.name || ""}</h1>${product.short_description || ""}${product.description || ""}</main>`;
+  const $ = cheerio.load(detailHtml);
+  const specs = extractTechnicalSpecs($, [], $("body").text());
+  return withTechnicalSpecs({
     price,
     stock,
     title: cheerio.load(String(product.name || "")).text().trim() || null,
     source: "Woo Store API",
-  };
+  }, specs);
 }
 
 export async function scrapeProduct(url, options) {
@@ -200,4 +310,4 @@ export async function scrapeProduct(url, options) {
   }
 }
 
-export const testing = { parseDocument, stockFromAvailability, stockFromText };
+export const testing = { extractTechnicalSpecs, parseDocument, stockFromAvailability, stockFromText };

@@ -40,6 +40,40 @@ test("parses focused retailer markup without mistaking related products", () => 
   });
 });
 
+test("extracts technical specifications for newly discovered TVs", () => {
+  const html = `<main>
+    <h1>TCL 85-inch QD-MiniLED Google TV</h1>
+    <p>144Hz Native Refresh Rate with VRR and HDMI 2.1.</p>
+    <div id="x_PanelPrice">€2499.00</div>
+    <span class="availability">In stock</span>
+  </main>`;
+  assert.deepEqual(testing.parseDocument(html).specs, {
+    panelTechnology: "QD-Mini LED",
+    refreshRate: "144 Hz",
+    os: "Google TV",
+    vrr: "Yes",
+    hdmi21: "Yes",
+  });
+});
+
+test("prefers labelled specification values", () => {
+  const html = `<main>
+    <h1>Hisense 85-inch TV</h1><meta itemprop="price" content="999">
+    <table><tr><th>Display technology</th><td>QLED</td></tr>
+    <tr><th>Refresh rate</th><td>120 Hz native</td></tr>
+    <tr><th>Operating system</th><td>VIDAA</td></tr>
+    <tr><th>VRR</th><td>No</td></tr>
+    <tr><th>HDMI 2.1</th><td>Yes</td></tr></table>
+  </main>`;
+  assert.deepEqual(testing.parseDocument(html).specs, {
+    panelTechnology: "QLED",
+    refreshRate: "120 Hz",
+    os: "VIDAA",
+    vrr: "No",
+    hdmi21: "Yes",
+  });
+});
+
 test("does not invent a price for removed listings", () => {
   assert.deepEqual(testing.parseDocument("<main>Product Not Found</main>"), {
     price: "",

@@ -70,6 +70,11 @@ export async function runUpdater(overrides = {}) {
             url: candidate.url,
             price: scraped.price || "",
             stock: scraped.stock || "Unknown",
+            panelTechnology: scraped.specs?.panelTechnology || "Not listed",
+            refreshRate: scraped.specs?.refreshRate || "Not listed",
+            os: scraped.specs?.os || "Not listed",
+            vrr: scraped.specs?.vrr || "Not listed",
+            hdmi21: scraped.specs?.hdmi21 || "Not listed",
           };
         } catch (error) {
           summary.skipped.push({ retailer: candidate.retailer, model: candidate.title || candidate.url, error: error.message });

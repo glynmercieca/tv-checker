@@ -77,7 +77,7 @@ export async function appendProducts(
   const endRow = startRow + products.length - 1;
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `${quotedSheet}!A${startRow}:G${endRow}`,
+    range: `${quotedSheet}!A${startRow}:L${endRow}`,
     valueInputOption: "USER_ENTERED",
     requestBody: {
       majorDimension: "ROWS",
@@ -89,6 +89,11 @@ export async function appendProducts(
         product.url,
         euroNumber(product.price),
         product.stock,
+        product.panelTechnology || "Not listed",
+        product.refreshRate || "Not listed",
+        product.os || "Not listed",
+        product.vrr || "Not listed",
+        product.hdmi21 || "Not listed",
       ]),
     },
   });
