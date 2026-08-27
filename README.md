@@ -10,7 +10,7 @@ Discovery currently covers all retailers represented in the sheet:
 - The Atrium and Klikk: their published product sitemaps.
 - Scan Malta: its Magento product catalog API.
 
-A candidate is appended only when its product title explicitly says **85 inch**, **85\"**, or **85″**. Model numbers merely containing `85` are not enough. Existing URLs are canonicalized before comparison, and unavailable candidates are rejected. Newly added rows contain retailer, brand, model/title, year when present in the title, URL, price, stock, panel technology, refresh rate, operating system, VRR support, and HDMI 2.1 support. Specifications are extracted from structured data, labelled product tables, and focused product-page text; a retailer omission is recorded as `Not listed` rather than guessed.
+A candidate is appended only when its product title explicitly says **85 inch**, **85\"**, or **85″** and the product page verifies support for at least **120 Hz**. Model numbers merely containing `85` are not enough. Existing URLs are canonicalized before comparison, and unavailable candidates or candidates without a verifiable refresh rate are rejected. Newly added rows contain retailer, brand, model/title, year when present in the title, URL, price, stock, panel technology, maximum supported refresh rate, operating system, VRR support, and HDMI 2.1 support. Specifications are extracted from structured data, labelled product tables, and focused product-page text; a retailer omission is recorded as `Not listed` rather than guessed.
 
 ## Email service: Brevo Free
 
@@ -67,6 +67,7 @@ npm start
 - Brevo is the default transport. Generic `SMTP_USER`, `SMTP_PASS`, `SMTP_HOST`, `SMTP_PORT`, and `SMTP_SECURE` variables remain supported for migration to another TLS SMTP provider.
 - `DISCOVERY_ENABLED=false` disables catalog discovery without disabling price checks.
 - `MAX_NEW_PRODUCTS` defaults to 25 and stops the run before writing if discovery unexpectedly finds more new candidates.
+- `MINIMUM_REFRESH_RATE_HZ` defaults to 120. Newly discovered TVs below that maximum supported rate, or whose refresh rate cannot be verified, are skipped.
 - HTTP 404/410 or an explicit “Product Not Found” page clears price and sets stock to `Listing unavailable`.
 - A retailer block, timeout, or ambiguous page leaves the row unchanged and logs `SKIP`.
 - Retailer HTML changes over time. Check scheduled-run logs; repeated `SKIP` entries mean that retailer needs a small parser adjustment.

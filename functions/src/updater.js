@@ -1,9 +1,14 @@
 import pLimit from "p-limit";
 import { getConfig } from "./config.js";
 import { createSheetsClient, readProducts, writeUpdates, appendProducts } from "./sheets.js";
-import { scrapeProduct } from "./scraper.js";
+import { maxSupportedRefreshRate, scrapeProduct } from "./scraper.js";
 import { canonicalUrl, discoverCandidates, identityFromTitle, is85InchTelevisionTitle, listingKey } from "./discovery.js";
 import { sendStatusEmail } from "./email.js";
+
+export function meetsMinimumRefreshRate(value, minimumRefreshRateHz = 120) {
+  const maximumRefreshRateHz = maxSupportedRefreshRate(value);
+  return maximumRefreshRateHz != null && maximumRefreshRateHz >= minimumRefreshRateHz;
+}
 
 export async function runUpdater(overrides = {}) {
   const config = { ...getConfig(), ...overrides };
@@ -61,6 +66,13 @@ export async function runUpdater(overrides = {}) {
           const title = scraped.title || candidate.title || "";
           if (!is85InchTelevisionTitle(title)) throw new Error(`Rejected candidate without an explicit 85-inch television title: ${title || "untitled page"}`);
           if (scraped.stock === "Listing unavailable") throw new Error("Candidate listing is unavailable");
+          const refreshRate = scraped.specs?.refreshRate || "";
+          if (!meetsMinimumRefreshRate(refreshRate, config.minimumRefreshRateHz)) {
+            const detail = refreshRate
+              ? `maximum verified refresh rate is ${refreshRate}`
+              : "refresh rate could not be verified";
+            throw new Error(`Rejected candidate: ${detail}; minimum is ${config.minimumRefreshRateHz} Hz`);
+          }
           const identity = identityFromTitle(title);
           return {
             retailer: candidate.retailer,
@@ -71,7 +83,7 @@ export async function runUpdater(overrides = {}) {
             price: scraped.price || "",
             stock: scraped.stock || "Unknown",
             panelTechnology: scraped.specs?.panelTechnology || "Not listed",
-            refreshRate: scraped.specs?.refreshRate || "Not listed",
+            refreshRate,
             os: scraped.specs?.os || "Not listed",
             vrr: scraped.specs?.vrr || "Not listed",
             hdmi21: scraped.specs?.hdmi21 || "Not listed",

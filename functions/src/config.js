@@ -21,6 +21,7 @@ export function getConfig() {
       "Mozilla/5.0 (compatible; TVPriceMonitor/1.0; +https://github.com/)",
     discoveryEnabled: !/^false$/i.test(process.env.DISCOVERY_ENABLED || "true"),
     maxNewProducts: Math.max(1, Number(process.env.MAX_NEW_PRODUCTS || 25)),
+    minimumRefreshRateHz: Math.max(1, Number(process.env.MINIMUM_REFRESH_RATE_HZ || 120)),
     email: {
       to: process.env.EMAIL_TO || "",
       from: process.env.EMAIL_FROM || smtpUser,

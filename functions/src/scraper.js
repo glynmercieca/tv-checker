@@ -123,13 +123,21 @@ function normalizePanel(value) {
     .replace("MINI LED", "Mini LED");
 }
 
-function normalizeRefreshRate(value) {
+export function maxSupportedRefreshRate(value) {
   const clean = cleanText(value);
-  const rate =
-    clean.match(/\b(\d{2,3})\s*hz\b(?=[^.!;]{0,30}\b(?:native|refresh))/i)?.[1] ||
-    clean.match(/\b(?:native|refresh rate)[^\d]{0,20}(\d{2,3})\s*hz\b/i)?.[1] ||
-    clean.match(/^\s*(\d{2,3})\s*hz\b/i)?.[1];
-  return rate ? `${rate} Hz` : "";
+  const rates = [...clean.matchAll(/\b(\d{2,3})\s*hz\b/gi)]
+    .filter((match) => {
+      const prefix = clean.slice(Math.max(0, match.index - 32), match.index);
+      return !/(?:motion rate|motionflow|clear motion|tru\s*motion|pqi)\s*$/i.test(prefix);
+    })
+    .map((match) => Number(match[1]))
+    .filter((rate) => Number.isFinite(rate));
+  return rates.length ? Math.max(...rates) : null;
+}
+
+function normalizeRefreshRate(...values) {
+  const rate = maxSupportedRefreshRate(values.join(" "));
+  return rate == null ? "" : `${rate} Hz`;
 }
 
 function normalizeOs(value) {
@@ -175,7 +183,7 @@ function extractTechnicalSpecs($, products, bodyText) {
 
   return {
     panelTechnology: normalizePanel(panelValue) || normalizePanel(sourceText),
-    refreshRate: normalizeRefreshRate(refreshValue) || normalizeRefreshRate(sourceText),
+    refreshRate: normalizeRefreshRate(refreshValue, sourceText),
     os: normalizeOs(osValue) || normalizeOs(sourceText),
     vrr: normalizeSupport(vrrValue, /\b(?:vrr|variable refresh rate|free\s*sync|g-sync)\b/i) ||
       (/\b(?:vrr|variable refresh rate|free\s*sync|g-sync)\b/i.test(sourceText) ? "Yes" : ""),
