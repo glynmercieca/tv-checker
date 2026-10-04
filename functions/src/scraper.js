@@ -107,10 +107,11 @@ function labelledValue(pairs, pattern) {
 
 function normalizePanel(value) {
   const match = cleanText(value).match(
-    /\b(?:SQD[- ]?Mini\s*LED|QD[- ]?Mini\s*LED|Mini\s*LED|QD[- ]?OLED|OLED|QLED|Direct\s*LED|DLED|Edge\s*LED|LED\s*LCD|LCD)\b/i,
+    /\b(?:RGB[- ]?Mini\s*LED|SQD[- ]?Mini\s*LED|QD[- ]?Mini\s*LED|Mini\s*LED|QD[- ]?OLED|OLED|Neo\s*QLED|QNED|QLED|Direct\s*LED|DLED|Edge\s*LED|LED\s*LCD|LCD|LED)\b/i,
   )?.[0];
   if (!match) return "";
   return match
+    .replace(/rgb[- ]?mini\s*led/i, "RGB-Mini LED")
     .replace(/sqd[- ]?mini\s*led/i, "SQD-Mini LED")
     .replace(/qd[- ]?mini\s*led/i, "QD-Mini LED")
     .replace(/mini\s*led/i, "Mini LED")

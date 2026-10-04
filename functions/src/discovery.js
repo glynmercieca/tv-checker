@@ -29,6 +29,10 @@ const sources = [
     url: "https://www.scanmalta.com/shop/graphql",
     productBaseUrl: "https://www.scanmalta.com/shop/",
   },
+  { retailer: "Audio Malta", kind: "woo", baseUrl: "https://www.audiomalta.com", userAgent: "Mozilla/5.0" },
+  { retailer: "Digital Zone", kind: "woo", baseUrl: "https://digitalzone.com.mt", userAgent: "Mozilla/5.0" },
+  { retailer: "Ultimate", kind: "category", url: "https://www.ultimate.com.mt/screen-size/85/", productPath: "/product/" },
+  { retailer: "Telecom", kind: "category", url: "https://www.telecom.com.mt/en/shop/webshop/bycategory/186/name/asc/9/1/85-inch.htm", productPath: "/webshop/" },
 ];
 
 function decodeHtml(value) {
@@ -59,7 +63,7 @@ export function canonicalUrl(value) {
 
 function looksLike85Url(value) {
   const decoded = decodeURIComponent(value).toLowerCase();
-  return /(?:^|[-_/])85(?:[-_/]|inch|″|%22)|[a-z]{1,5}85[a-z0-9-]{2,}/i.test(decoded);
+  return /(?:^|[-_/])85(?:[-_/]|inch|″|%22|[a-z][a-z0-9-]{1,})|[a-z]{1,5}85[a-z0-9-]{2,}/i.test(decoded);
 }
 
 async function fetchText(url, config, init = {}) {
@@ -77,44 +81,80 @@ async function fetchText(url, config, init = {}) {
 }
 
 async function discoverSitemap(source, config) {
-  const xml = await fetchText(source.url, config);
-  const $ = cheerio.load(xml, { xmlMode: true });
-  return $("loc")
-    .map((_, element) => $(element).text().trim())
-    .get()
-    .filter((url) => (!source.requiredPath || new URL(url).pathname.includes(source.requiredPath)))
-    .filter(looksLike85Url)
-    .map((url) => ({ retailer: source.retailer, url }));
+  const pending = [source.url], visited = new Set(), found = [];
+  while (pending.length) {
+    const url = pending.shift();
+    if (visited.has(url)) continue;
+    if (visited.size >= (config.maxDiscoveryPages || 20)) throw new Error("Sitemap page limit exceeded");
+    visited.add(url);
+    const $ = cheerio.load(await fetchText(url, config), { xmlMode: true });
+    if (!$("sitemapindex, urlset").length) throw new Error("Retailer did not return a valid sitemap");
+    $("sitemap > loc").each((_, element) => {
+      const child = new URL($(element).text().trim(), url);
+      if (child.origin === new URL(source.url).origin) pending.push(child.toString());
+    });
+    $("url > loc").each((_, element) => {
+      const productUrl = $(element).text().trim();
+      if (new URL(productUrl).origin !== new URL(source.url).origin) return;
+      if ((!source.requiredPath || new URL(productUrl).pathname.includes(source.requiredPath)) && looksLike85Url(productUrl)) {
+        found.push({ retailer: source.retailer, url: productUrl });
+      }
+    });
+  }
+  return found;
 }
 
 async function discoverWoo(source, config) {
   const api = new URL("/wp-json/wc/store/v1", source.baseUrl);
-  const categoriesUrl = new URL(`${api}/products/categories`);
-  categoriesUrl.searchParams.set("search", "television");
-  categoriesUrl.searchParams.set("per_page", "100");
-  const categories = JSON.parse(await fetchText(categoriesUrl, config));
-  const televisionCategories = categories.filter((category) =>
-    /televisions?/i.test(`${decodeHtml(category.name)} ${category.slug}`),
-  );
   const discovered = [];
-
-  for (const category of televisionCategories) {
-    const pageCount = Math.max(1, Math.ceil(Number(category.count || 1) / 100));
-    for (let page = 1; page <= pageCount; page += 1) {
+  const pageLimit = config.maxDiscoveryPages || 20;
+  for (let page = 1; page <= pageLimit; page += 1) {
       const productsUrl = new URL(`${api}/products`);
-      productsUrl.searchParams.set("category", String(category.id));
+      // Search all categories: local shops use both TV and television taxonomies.
+      productsUrl.searchParams.set("search", "85");
       productsUrl.searchParams.set("per_page", "100");
-      productsUrl.searchParams.set("page", String(page));
-      const products = JSON.parse(await fetchText(productsUrl, config));
+      if (page > 1) productsUrl.searchParams.set("page", String(page));
+      const products = JSON.parse(await fetchText(productsUrl, config, { headers: { "user-agent": source.userAgent || config.userAgent } }));
+      if (!Array.isArray(products)) throw new Error("Retailer returned an invalid product catalog");
       for (const product of products) {
         const title = decodeHtml(product.name);
         if (is85InchTelevisionTitle(title)) {
           discovered.push({ retailer: source.retailer, url: product.permalink, title });
         }
       }
-    }
+      if (products.length < 100) break;
+      if (page === pageLimit) throw new Error("Catalog page limit exceeded");
   }
   return discovered;
+}
+
+async function discoverCategory(source, config) {
+  const pending = [source.url], visited = new Set(), found = [];
+  while (pending.length) {
+    const url = pending.shift();
+    if (visited.has(url)) continue;
+    if (visited.size >= (config.maxDiscoveryPages || 20)) throw new Error("Category page limit exceeded");
+    visited.add(url);
+    const $ = cheerio.load(await fetchText(url, config));
+    if (/verify you are human|just a moment|checking your browser/i.test($("title, body").text().slice(0, 2000))) {
+      throw new Error("Retailer returned an anti-bot verification page");
+    }
+    $("a[href]").each((_, element) => {
+      const link = $(element);
+      const target = new URL(link.attr("href"), url);
+      if (target.origin !== new URL(source.url).origin) return;
+      const title = decodeHtml(link.find("h2, h3").text() || link.text() || link.attr("title") || link.find("img").attr("alt"));
+      if (target.pathname.includes(source.productPath) && !target.pathname.includes("/bycategory/") &&
+          (is85InchTelevisionTitle(title) || looksLike85Url(target.toString()))) {
+        target.hash = "";
+        if (![...target.searchParams.keys()].some((key) => /add-to-cart/i.test(key))) {
+          found.push({ retailer: source.retailer, url: target.toString(), title });
+        }
+      }
+      if (link.is(".next, [rel='next']")) pending.push(target.toString());
+    });
+  }
+  return found;
 }
 
 async function discoverMagento(source, config) {
@@ -150,7 +190,9 @@ export async function discoverCandidates(config) {
         ? await discoverWoo(source, config)
         : source.kind === "magento"
           ? await discoverMagento(source, config)
-          : await discoverSitemap(source, config);
+          : source.kind === "category"
+            ? await discoverCategory(source, config)
+            : await discoverSitemap(source, config);
       candidates.push(...found);
       console.log(`DISCOVER ${source.retailer}: ${found.length} candidate 85-inch listing(s)`);
     } catch (error) {
@@ -184,4 +226,4 @@ export function listingKey(retailer, model) {
   return `${decodeHtml(retailer).toUpperCase()}|${token.replace(/[^A-Z0-9]/g, "")}`;
 }
 
-export const testing = { decodeHtml, looksLike85Url };
+export const testing = { decodeHtml, looksLike85Url, discoverSitemap, discoverCategory, discoverWoo };

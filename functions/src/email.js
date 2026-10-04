@@ -36,10 +36,16 @@ function buildMessage(summary) {
     item.error,
   ]);
   const fatal = summary.fatalError ? `<p style="color:#b00020"><strong>Fatal error:</strong> ${escapeHtml(summary.fatalError)}</p>` : "";
+  const bestRows = [
+    ["Best overall (#51acb7)", summary.best?.overall],
+    ["Best under €1,200 (#d09be6)", summary.best?.budget],
+  ].map(([label, product]) => [label, product ? `${product.retailer} ${product.brand} ${product.model}` : "No eligible in-stock model", product?.price || "—", product?.url || ""]);
   const html = `
     <h2>TV price and stock update${summary.dryRun ? " — dry run" : ""}</h2>
     <p>Checked ${summary.checked} existing listings. ${summary.modified.length} ${action} modified and ${summary.added.length} ${action} added. ${summary.skipped.length} checks were skipped or failed.</p>
     ${fatal}
+    <h3>Best gaming models</h3>${table(["Selection", "Model", "Price", "URL"], bestRows)}
+    <p>${summary.historyCount || 0} price-history observations ${summary.dryRun ? "would be recorded" : "collected"}.</p>
     <h3>Modified</h3>${table(["Listing", "Price", "Stock"], modifiedRows)}
     <h3>Added</h3>${table(["Retailer", "Model", "Price", "Stock", "URL"], addedRows)}
     <h3>Skipped / failed</h3>${table(["Retailer", "Model", "Reason"], skippedRows)}
@@ -48,6 +54,9 @@ function buildMessage(summary) {
     `TV update${summary.dryRun ? " (dry run)" : ""}`,
     `Checked: ${summary.checked}; modified: ${summary.modified.length}; added: ${summary.added.length}; skipped: ${summary.skipped.length}`,
     summary.fatalError ? `Fatal error: ${summary.fatalError}` : "",
+    "Best gaming models:",
+    ...bestRows.map((row) => row.join(" | ")),
+    `Price-history observations: ${summary.historyCount || 0}`,
     "Modified:",
     ...modifiedRows.map((row) => row.join(" | ")),
     "Added:",
