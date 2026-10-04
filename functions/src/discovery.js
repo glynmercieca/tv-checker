@@ -35,6 +35,12 @@ const sources = [
   { retailer: "Telecom", kind: "category", url: "https://www.telecom.com.mt/en/shop/webshop/bycategory/186/name/asc/9/1/85-inch.htm", productPath: "/webshop/" },
 ];
 
+export function retailerRequestOptions(url, config) {
+  const host = new URL(url).hostname.replace(/^www\./, "");
+  const source = sources.find((item) => new URL(item.baseUrl || item.productBaseUrl || item.url).hostname.replace(/^www\./, "") === host);
+  return source?.userAgent ? { ...config, userAgent: source.userAgent } : config;
+}
+
 function decodeHtml(value) {
   return cheerio.load(String(value || "")).text().replace(/\s+/g, " ").trim();
 }
@@ -208,7 +214,7 @@ export async function discoverCandidates(config) {
 
 const brands = [
   "Samsung", "Hisense", "TCL", "Sony", "Philips", "LG", "Xiaomi", "Panasonic",
-  "Sharp", "Toshiba", "JVC", "Grundig", "Haier", "Metz",
+  "Sharp", "Toshiba", "JVC", "Grundig", "Haier", "Metz", "Next",
 ];
 
 export function identityFromTitle(title) {

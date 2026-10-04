@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { checkProductWithGpt, pageEvidence } from "../src/gpt.js";
 import { scrapeProduct, testing } from "../src/scraper.js";
 
-const fields = ["title", "price", "stock", "panelTechnology", "refreshRate", "os", "vrr", "hdmi21"];
+const fields = ["title", "screenSize", "price", "stock", "panelTechnology", "refreshRate", "os", "vrr", "hdmi21"];
 const html = `<main><h1>Samsung 85-inch TV</h1><p>Price EUR 1.299,00</p><p>In stock</p>
   <p>Refresh rate 120 Hz native; Motion Rate 240 Hz</p><p>VRR: No</p></main>`;
 const options = { gptEnabled: true, openaiApiKey: "test-key", openaiModel: "gpt-6.1-sol", requestTimeoutMs: 5000 };

@@ -38,6 +38,7 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           SPREADSHEET_ID: ${{ vars.SPREADSHEET_ID }}
           SHEET_NAME: ${{ vars.SHEET_NAME }}
+          HISTORY_SHEET_NAME: ${{ vars.HISTORY_SHEET_NAME }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           GPT_CHECKS_ENABLED: ${{ vars.GPT_CHECKS_ENABLED }}

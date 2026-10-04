@@ -89,3 +89,17 @@ test("later discovery failures still preserve completed price observations", asy
   await assert.rejects(runUpdater(fixture.options), /Discovery unavailable/);
   assert.equal(fixture.writes.find(([kind]) => kind === "history")[1].requestBody.values.length, 2);
 });
+
+test("accepts a verified 85-inch description when the product title omits size", async () => {
+  const fixture = updaterFixture(true);
+  fixture.options.scrapeProduct = async () => ({
+    title: "Sony K85XR70", televisionVerified: true, screenSize: "Screen Size: 85 inches",
+    price: "€2,999.00", stock: "In stock", specs: { panelTechnology: "Mini LED", refreshRate: "120 Hz" },
+  });
+  assert.equal((await runUpdater(fixture.options)).added.length, 1);
+  fixture.options.scrapeProduct = async () => ({
+    title: "Sony K85XR70", televisionVerified: true, screenSize: "Screen Size: 75 inches",
+    price: "€2,999.00", stock: "In stock", specs: { panelTechnology: "Mini LED", refreshRate: "120 Hz" },
+  });
+  assert.equal((await runUpdater(fixture.options)).added.length, 0);
+});

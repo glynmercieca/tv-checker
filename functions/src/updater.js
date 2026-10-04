@@ -3,7 +3,7 @@ import { getConfig } from "./config.js";
 import { createSheetsClient, readProducts, writeUpdates, appendProducts, writeSpecifications, appendPriceHistory, highlightBestModels } from "./sheets.js";
 import { selectBestModels } from "./ranking.js";
 import { maxSupportedRefreshRate, scrapeProduct } from "./scraper.js";
-import { canonicalUrl, discoverCandidates, identityFromTitle, is85InchTelevisionTitle, listingKey } from "./discovery.js";
+import { canonicalUrl, discoverCandidates, identityFromTitle, is85InchTelevisionTitle, is85InchTitle, listingKey, retailerRequestOptions } from "./discovery.js";
 import { sendStatusEmail } from "./email.js";
 
 export function meetsMinimumRefreshRate(value, minimumRefreshRateHz = 120) {
@@ -40,7 +40,7 @@ export async function runUpdater(overrides = {}) {
 
     const existingResults = await Promise.all(products.map((product) => limit(async () => {
       try {
-        const scraped = await scrape(product.url, config);
+        const scraped = await scrape(product.url, retailerRequestOptions(product.url, config));
         const observation = { ...product, checkedAt: new Date().toISOString(), price: scraped.price, stock: scraped.stock };
         const current = { ...product, price: scraped.price, stock: scraped.stock };
         for (const field of ["panelTechnology", "refreshRate", "os", "vrr", "hdmi21"]) {
@@ -81,9 +81,11 @@ export async function runUpdater(overrides = {}) {
       const newCandidates = discovery.candidates.filter((candidate) => !existingUrls.has(canonicalUrl(candidate.url)));
       const discoveredResults = await Promise.all(newCandidates.map((candidate) => limit(async () => {
         try {
-          const scraped = await scrape(candidate.url, config);
+          const scraped = await scrape(candidate.url, retailerRequestOptions(candidate.url, config));
           const title = scraped.title || candidate.title || "";
-          if (!is85InchTelevisionTitle(title)) throw new Error(`Rejected candidate without an explicit 85-inch television title: ${title || "untitled page"}`);
+          if (!is85InchTelevisionTitle(title) && !(scraped.televisionVerified && is85InchTitle(scraped.screenSize))) {
+            throw new Error(`Rejected candidate without explicit evidence of an 85-inch television: ${title || "untitled page"}`);
+          }
           if (scraped.stock === "Listing unavailable") throw new Error("Candidate listing is unavailable");
           const refreshRate = scraped.specs?.refreshRate || "";
           if (!meetsMinimumRefreshRate(refreshRate, config.minimumRefreshRateHz)) {

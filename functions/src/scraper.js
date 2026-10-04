@@ -332,7 +332,7 @@ async function gptResult(url, html, options, parsed) {
   }
   // Only use fields backed by GPT evidence when checks are enabled. Unknown fields
   // remain null so the updater preserves the existing price/stock independently.
-  return withTechnicalSpecs({ price, stock, title: facts.title, source: `GPT (${options.openaiModel || "gpt-6.1-sol"})` }, {
+  return withTechnicalSpecs({ price, stock, title: facts.title, screenSize: facts.screenSize, televisionVerified: true, source: `GPT (${options.openaiModel || "gpt-6.1-sol"})` }, {
     panelTechnology: normalizePanel(facts.panelTechnology),
     refreshRate: normalizeRefreshRate(facts.refreshRate),
     os: normalizeOs(facts.os),
