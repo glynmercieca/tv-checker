@@ -21,7 +21,7 @@ export function getConfig() {
       "SPREADSHEET_ID",
       "17AeERTQ8IuFSnUPOKv-w9WdNhxInj2glO4QQtDjZTAw",
     ),
-    sheetName: process.env.SHEET_NAME || "Sheet2",
+    sheetName: process.env.SHEET_NAME || "tvs",
     historySheetName: process.env.HISTORY_SHEET_NAME || "Price history",
     budgetLimit: 1200,
     maxDiscoveryPages: 20,

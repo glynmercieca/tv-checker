@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendProducts, readProducts, appendPriceHistory, highlightBestModels, writeSpecifications } from "../src/sheets.js";
+import { appendProducts, readProducts, appendPriceHistory, highlightBestModels, writeSpecifications, resolveProductSheet } from "../src/sheets.js";
 
 test("reads existing rows and returns the next unused row", async () => {
   const sheets = {
@@ -120,4 +120,50 @@ test("updates specifications only in H:L", async () => {
   await writeSpecifications(sheets, { spreadsheetId: "id", sheetName: "Sheet2" }, [{ row: 5, panelTechnology: "QLED", refreshRate: "144 Hz", os: "Google TV", vrr: "Yes", hdmi21: "No" }]);
   assert.equal(request.requestBody.data[0].range, "'Sheet2'!H5:L5");
   assert.deepEqual(request.requestBody.data[0].values[0], ["QLED", "144 Hz", "Google TV", "Yes", "No"]);
+});
+
+function tabFixture(titles, headers = []) {
+  const requests = [];
+  return {
+    requests,
+    sheets: { spreadsheets: {
+      get: async () => ({ data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId } })) } }),
+      values: { batchGet: async (args) => {
+        requests.push(args);
+        return { data: { valueRanges: headers.map((row) => ({ values: [row] })) } };
+      } },
+    } },
+  };
+}
+const productHeaders = ["Retailer", "Brand", "Model", "Year", "Product link", "Price (€)", "Stock"];
+
+test("uses the exact existing tab without guessing or reading other tabs", async () => {
+  const fixture = tabFixture(["Sheet2", "Price history"]);
+  assert.equal(await resolveProductSheet(fixture.sheets, { spreadsheetId: "id", sheetName: "Sheet2" }), "Sheet2");
+  assert.equal(fixture.requests.length, 0);
+});
+
+test("resolves case or whitespace mistakes to the real tab title", async () => {
+  const fixture = tabFixture(["85 inch TVs"]);
+  assert.equal(await resolveProductSheet(fixture.sheets, { spreadsheetId: "id", sheetName: " 85 INCH TVs " }), "85 inch TVs");
+});
+
+test("finds a uniquely matching renamed product tab and excludes price history", async () => {
+  const fixture = tabFixture(["Notes", "85\" TVs", "Price history"], [["Notes"], productHeaders]);
+  assert.equal(await resolveProductSheet(fixture.sheets, { spreadsheetId: "id", sheetName: "Sheet2" }), '85" TVs');
+  assert.deepEqual(fixture.requests[0].ranges, ["'Notes'!A1:G1", "'85\" TVs'!A1:G1"]);
+});
+
+test("fails with available tab names when tables are absent or ambiguous", async () => {
+  for (const rows of [[["Notes"]], [productHeaders, productHeaders]]) {
+    const fixture = tabFixture(rows.length === 1 ? ["Notes"] : ["TVs", "Other TVs"], rows);
+    await assert.rejects(resolveProductSheet(fixture.sheets, { spreadsheetId: "id", sheetName: "Sheet2" }), /Available tabs:.*Set the GitHub Actions repository variable SHEET_NAME/);
+  }
+});
+
+test("reads just the twelve required columns with an escaped real tab title", async () => {
+  let range;
+  const sheets = { spreadsheets: { values: { get: async (args) => { range = args.range; return { data: {} }; } } } };
+  await readProducts(sheets, { spreadsheetId: "id", sheetName: "Owner's TVs" });
+  assert.equal(range, "'Owner''s TVs'!A2:L");
 });

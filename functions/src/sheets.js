@@ -20,10 +20,48 @@ export function createSheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
+export async function resolveProductSheet(sheets, { spreadsheetId, sheetName, historySheetName = "Price history" }) {
+  const metadata = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties(sheetId,title,gridProperties.columnCount)",
+  });
+  const tabs = (metadata.data.sheets || []).map((item) => item.properties).filter(Boolean);
+  const exact = tabs.find((tab) => tab.title === sheetName);
+  if (exact) return exact.title;
+  const normalized = (value) => String(value || "").trim().toLowerCase();
+  const matches = tabs.filter((tab) => normalized(tab.title) === normalized(sheetName));
+  if (matches.length === 1) return matches[0].title;
+
+  // A renamed default tab is safe to discover only when exactly one tab has the
+  // expected product-table columns. Never select an arbitrary first tab.
+  const candidates = tabs.filter((tab) => normalized(tab.title) !== normalized(historySheetName) &&
+    (tab.gridProperties?.columnCount ?? 26) >= 7);
+  if (candidates.length) {
+    const headers = await sheets.spreadsheets.values.batchGet({
+      spreadsheetId,
+      ranges: candidates.map((tab) => `'${tab.title.replaceAll("'", "''")}'!A1:G1`),
+      valueRenderOption: "FORMATTED_VALUE",
+    });
+    const productTabs = candidates.filter((_, index) => {
+      const row = headers.data.valueRanges?.[index]?.values?.[0] || [];
+      return /retailer|shop|store/i.test(row[0] || "") &&
+        /brand|manufacturer/i.test(row[1] || "") &&
+        /model|product/i.test(row[2] || "") &&
+        /url|link|product\s*page/i.test(row[4] || "") &&
+        /price|cost/i.test(row[5] || "") && /stock|availability/i.test(row[6] || "");
+    });
+    if (productTabs.length === 1) {
+      console.warn(`SHEET Configured tab ${JSON.stringify(sheetName)} was not found; using verified product tab ${JSON.stringify(productTabs[0].title)}`);
+      return productTabs[0].title;
+    }
+  }
+  throw new Error(`Product tab ${JSON.stringify(sheetName)} was not found or could not be resolved uniquely. Available tabs: ${tabs.map((tab) => JSON.stringify(tab.title)).join(", ") || "none"}. Set the GitHub Actions repository variable SHEET_NAME to the exact product tab name (not the spreadsheet file name).`);
+}
+
 export async function readProducts(sheets, { spreadsheetId, sheetName }) {
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `'${sheetName.replaceAll("'", "''")}'!A2:V`,
+    range: `'${sheetName.replaceAll("'", "''")}'!A2:L`,
     valueRenderOption: "FORMATTED_VALUE",
   });
 

@@ -36,7 +36,7 @@ function updaterFixture(dryRun) {
     },
   } };
   return { writes, email, options: {
-    sheets, dryRun, gptEnabled: false,
+    sheets, dryRun, sheetName: "Sheet2", gptEnabled: false,
     scrapeProduct: async (url) => {
       if (url.endsWith("failed")) throw new Error("Retailer blocked");
       if (url.endsWith("unknown")) return { price: null, stock: null };

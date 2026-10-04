@@ -2,6 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { getConfig } from "../src/config.js";
 
+test("defaults to the renamed tvs tab and preserves explicit tab overrides", () => {
+  const previous = process.env.SHEET_NAME;
+  try {
+    delete process.env.SHEET_NAME;
+    assert.equal(getConfig().sheetName, "tvs");
+    process.env.SHEET_NAME = "Custom TVs";
+    assert.equal(getConfig().sheetName, "Custom TVs");
+  } finally {
+    if (previous == null) delete process.env.SHEET_NAME;
+    else process.env.SHEET_NAME = previous;
+  }
+});
+
 test("GPT defaults, explicit disabling, and missing-key validation", () => {
   const keys = ["OPENAI_API_KEY", "OPENAI_MODEL", "GPT_CHECKS_ENABLED", "GPT_TIMEOUT_MS"];
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));

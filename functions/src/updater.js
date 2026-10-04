@@ -1,6 +1,6 @@
 import pLimit from "p-limit";
 import { getConfig } from "./config.js";
-import { createSheetsClient, readProducts, writeUpdates, appendProducts, writeSpecifications, appendPriceHistory, highlightBestModels } from "./sheets.js";
+import { createSheetsClient, resolveProductSheet, readProducts, writeUpdates, appendProducts, writeSpecifications, appendPriceHistory, highlightBestModels } from "./sheets.js";
 import { selectBestModels } from "./ranking.js";
 import { maxSupportedRefreshRate, scrapeProduct } from "./scraper.js";
 import { canonicalUrl, discoverCandidates, identityFromTitle, is85InchTelevisionTitle, is85InchTitle, listingKey, retailerRequestOptions } from "./discovery.js";
@@ -33,6 +33,8 @@ export async function runUpdater(overrides = {}) {
   let runError = null;
 
   try {
+    config.sheetName = await resolveProductSheet(sheets, config);
+    if (config.sheetName === config.historySheetName) throw new Error("Product and price-history tabs must have different names");
     const { products, nextRow } = await readProducts(sheets, config);
     summary.checked = products.length;
     const limit = pLimit(config.concurrency);

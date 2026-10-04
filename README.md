@@ -1,6 +1,6 @@
 # TV price and stock updater
 
-Reads the product links in `Sheet2!E2:E`, checks each retailer, and updates `F:G` (Price and Stock) plus verified technical specifications in `H:L`. It searches Maltese retailers for new 85-inch gaming TVs, appends new listings in `A:L`, highlights the best available models in column C, records every check in a separate price-history tab, and emails a status report. It is preconfigured for the supplied **85\" TVs** spreadsheet.
+Reads the product links in `tvs!E2:E`, checks each retailer, and updates `F:G` (Price and Stock) plus verified technical specifications in `H:L`. It searches Maltese retailers for new 85-inch gaming TVs, appends new listings in `A:L`, highlights the best available models in column C, records every check in a separate price-history tab, and emails a status report. It is preconfigured for the supplied **85\" TVs** spreadsheet; the product tab defaults to **tvs**.
 
 The scraper prefers structured product data (JSON-LD), then standard product metadata and focused stock text. For WooCommerce shops it also tries the public Store API. If parsing is uncertain or a retailer presents an anti-bot page, that row is skipped: the existing sheet values are not overwritten.
 
@@ -81,12 +81,14 @@ GitHub Actions is the simplest option for this workload. The included workflow r
    - Add repository secret `BREVO_SMTP_KEY` containing the generated Brevo SMTP key.
    - Add repository secret `OPENAI_API_KEY` to enable GPT checks.
    - Add repository variable `SPREADSHEET_ID` = `17AeERTQ8IuFSnUPOKv-w9WdNhxInj2glO4QQtDjZTAw`.
-   - Add repository variable `SHEET_NAME` = `Sheet2`.
+   - Add repository variable `SHEET_NAME` = `tvs` (the renamed product tab).
    - Add repository variable `EMAIL_FROM` = `TV Monitor <your-verified-sender@example.com>`.
 6. Open **Actions → Update TV prices and stock → Run workflow**, keep dry-run enabled, and review the log.
 7. Run again with dry-run disabled. Scheduled runs write changes automatically.
 
 Never commit the service-account JSON file.
+
+If Actions reports `Unable to parse range: 'Sheet2'!A2:V`, check **Settings → Secrets and variables → Actions → Variables → SHEET_NAME**. This must be the tab name shown at the bottom of Google Sheets, not the spreadsheet file name. The checker now reads only A:L and resolves the configured name against actual tabs before any product writes. Case/whitespace differences are corrected; a missing or renamed tab is auto-selected only if exactly one non-history tab has the expected retailer/brand/model/link/price/stock columns. Otherwise, the log lists available tabs so you can set the exact name. The resolved title is used for all updates, new listings, specifications, and highlights.
 
 ## Local dry run
 
