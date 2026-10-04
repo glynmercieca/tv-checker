@@ -44,13 +44,13 @@ test("appends A:L and applies currency/text formats", async () => {
   assert.equal(calls[1][1].requestBody.requests[0].repeatCell.range.startRowIndex, 39);
 });
 
-test("creates a price-history tab and appends numeric observations safely", async () => {
+test("creates a daily price-history table with numeric prices and literal identity text", async () => {
   const calls = [];
   const sheets = { spreadsheets: {
     get: async () => ({ data: { sheets: [] } }),
     batchUpdate: async (args) => {
       calls.push(["batch", args]);
-      return { data: { replies: [{ addSheet: { properties: { sheetId: 9, title: "Price history" } } }] } };
+      return { data: { replies: [{ addSheet: { properties: { sheetId: 9, title: "history" } } }] } };
     },
     values: {
       get: async () => ({ data: {} }),
@@ -60,15 +60,14 @@ test("creates a price-history tab and appends numeric observations safely", asyn
   } };
   await appendPriceHistory(sheets, { spreadsheetId: "id", sheetName: "Sheet2" }, [
     { checkedAt: "2026-10-04T09:00:00Z", retailer: "Shop", brand: "TCL", model: "=85TV", url: "https://example.com/tv", price: "€1.199,00", stock: "In stock" },
-    { checkedAt: "2026-10-04T09:00:01Z", retailer: "Shop", brand: "TCL", model: "85TV", url: "https://example.com/tv", price: null, error: "timeout" },
+    { checkedAt: "2026-10-04T09:00:01Z", retailer: "Shop", brand: "TCL", model: "85OTHER", url: "https://example.com/other", price: null, error: "timeout" },
   ]);
-  assert.equal(calls[0][1].requestBody.requests[0].addSheet.properties.title, "Price history");
-  const append = calls.find(([kind]) => kind === "history")[1];
-  assert.equal(append.valueInputOption, "RAW");
-  assert.equal(append.requestBody.values[0][5], 1199);
-  assert.equal(append.requestBody.values[0][3], "=85TV");
-  assert.equal(append.requestBody.values[1][5], "");
-  assert.equal(append.requestBody.values[1][7], "Failed: timeout");
+  assert.equal(calls[0][1].requestBody.requests[0].addSheet.properties.title, "history");
+  const rows = calls[1][1].requestBody.requests.find((item) => item.updateCells).updateCells.rows;
+  assert.equal(rows[0].values[4].userEnteredValue.stringValue, "2026-10-04");
+  assert.equal(rows[1].values[4].userEnteredValue.numberValue, 1199);
+  assert.equal(rows[1].values[2].userEnteredValue.stringValue, "=85TV");
+  assert.deepEqual(rows[2].values[4], {});
 });
 
 test("history preserves an existing tab and rejects incompatible headers", async () => {
@@ -78,9 +77,45 @@ test("history preserves an existing tab and rejects incompatible headers", async
     values: { get: async () => ({ data: { values: [["My own data"]] } }) },
     batchUpdate: async () => { mutations++; },
   } };
-  await assert.rejects(appendPriceHistory(sheets, { spreadsheetId: "id", sheetName: "Sheet2" }, []), /Unexpected headers/);
+  await assert.rejects(appendPriceHistory(sheets, { spreadsheetId: "id", sheetName: "Sheet2", historySheetName: "Price history" }, []), /Unexpected headers/);
   assert.equal(mutations, 0);
-  await assert.rejects(appendPriceHistory(sheets, { spreadsheetId: "id", sheetName: "Price history" }, []), /separate sheet/);
+  await assert.rejects(appendPriceHistory(sheets, { spreadsheetId: "id", sheetName: "history" }, []), /separate sheet/);
+});
+
+test("backs up the old check log and converts it in the same atomic sheet batch", async () => {
+  let requests;
+  const sheets = { spreadsheets: {
+    get: async () => ({ data: { sheets: [{ properties: { sheetId: 9, title: "history", gridProperties: { rowCount: 1000, columnCount: 26 } } }] } }),
+    values: { get: async () => ({ data: { values: [
+      ["Checked at (UTC)", "Retailer", "Brand", "Model", "Product link", "Price (€)", "Stock", "Check status"],
+      ["2026-10-03T09:00:00Z", "Shop", "TCL", "85C7K", "https://example.com/tv", "€1,099.00", "In stock", "Checked"],
+    ] } }) },
+    batchUpdate: async (args) => { requests = args.requestBody.requests; },
+  } };
+  await appendPriceHistory(sheets, { spreadsheetId: "id", sheetName: "tvs" }, []);
+  assert.equal(requests[0].duplicateSheet.sourceSheetId, 9);
+  assert.match(requests[0].duplicateSheet.newSheetName, /^history backup /);
+  const update = requests.find((item) => item.updateCells).updateCells;
+  assert.equal(update.range.endColumnIndex, 8);
+  assert.equal(update.rows[0].values[0].userEnteredValue.stringValue, "Retailer");
+  assert.equal(update.rows[1].values[4].userEnteredValue.numberValue, 1099);
+});
+
+test("grows the history grid when daily dates extend beyond column Z", async () => {
+  let requests;
+  const dates = Array.from({ length: 22 }, (_, index) => `2026-10-${String(index + 1).padStart(2, "0")}`);
+  const sheets = { spreadsheets: {
+    get: async () => ({ data: { sheets: [{ properties: { sheetId: 9, title: "history", gridProperties: { rowCount: 1000, columnCount: 26 } } }] } }),
+    values: { get: async () => ({ data: { values: [["Retailer", "Brand", "Model", "Product link", ...dates]] } }) },
+    batchUpdate: async (args) => { requests = args.requestBody.requests; },
+  } };
+  await appendPriceHistory(sheets, { spreadsheetId: "id", sheetName: "tvs" }, [{
+    checkedAt: "2026-10-23T09:00:00Z", retailer: "Shop", brand: "TCL", model: "85C7K", url: "https://example.com/tv", price: 1099,
+  }]);
+  assert.equal(requests[0].updateSheetProperties.properties.gridProperties.columnCount, 27);
+  const update = requests.find((item) => item.updateCells).updateCells;
+  assert.equal(update.rows[0].values[26].userEnteredValue.stringValue, "2026-10-23");
+  assert.equal(update.rows[1].values[26].userEnteredValue.numberValue, 1099);
 });
 
 test("highlights exactly the model column and replaces only owned rules", async () => {

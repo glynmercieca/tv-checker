@@ -18,15 +18,15 @@ test("supports a configurable minimum refresh rate", () => {
 
 function updaterFixture(dryRun) {
   const writes = [], email = [];
-  const headers = ["Checked at (UTC)", "Retailer", "Brand", "Model", "Product link", "Price (€)", "Stock", "Check status"];
+  const headers = ["Retailer", "Brand", "Model", "Product link"];
   const sheets = { spreadsheets: {
     get: async () => ({ data: { sheets: [
       { properties: { sheetId: 7, title: "Sheet2" } },
       { properties: { sheetId: 9, title: "Price history" } },
     ] } }),
-    batchUpdate: async (args) => { writes.push(["format", args]); return { data: {} }; },
+    batchUpdate: async (args) => { writes.push([args.requestBody.requests.some((item) => item.updateCells) ? "history" : "format", args]); return { data: {} }; },
     values: {
-      get: async (args) => ({ data: { values: args.range.includes("A1:H1") ? [headers] : [
+      get: async (args) => ({ data: { values: args.range === "'Price history'" ? [headers] : [
         ["Shop", "TCL", "85C7K", "2026", "https://example.com/current", "€1,099.00", "In stock", "QLED", "144 Hz", "Google TV", "Yes", "Yes"],
         ["Shop", "Sony", "85OLD", "2026", "https://example.com/failed", "€999.00", "In stock", "OLED", "240 Hz"],
       ] } }),
@@ -56,12 +56,11 @@ test("writes recommendations and records unchanged prices, additions, and failed
   assert.equal(summary.best.overall.row, 4);
   assert.equal(summary.best.budget.row, 2);
   assert.equal(summary.historyCount, 3);
-  const history = fixture.writes.find(([kind]) => kind === "history")[1].requestBody.values;
-  assert.equal(history[0][5], 1099);
-  assert.equal(history[1][5], "");
-  assert.match(history[1][7], /Failed/);
-  assert.equal(history[2][5], 2500);
-  assert.ok(history.every((row) => /Z$/.test(row[0])));
+  const history = fixture.writes.find(([kind]) => kind === "history")[1].requestBody.requests.find((item) => item.updateCells).updateCells.rows;
+  assert.equal(history[1].values[4].userEnteredValue.numberValue, 1099);
+  assert.deepEqual(history[2].values[4], {});
+  assert.equal(history[3].values[4].userEnteredValue.numberValue, 2500);
+  assert.match(history[0].values[4].userEnteredValue.stringValue, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(fixture.email.length, 1);
 });
 
@@ -87,7 +86,7 @@ test("later discovery failures still preserve completed price observations", asy
   const fixture = updaterFixture(false);
   fixture.options.discoverCandidates = async () => { throw new Error("Discovery unavailable"); };
   await assert.rejects(runUpdater(fixture.options), /Discovery unavailable/);
-  assert.equal(fixture.writes.find(([kind]) => kind === "history")[1].requestBody.values.length, 2);
+  assert.equal(fixture.writes.find(([kind]) => kind === "history")[1].requestBody.requests.find((item) => item.updateCells).updateCells.rows.length, 3);
 });
 
 test("accepts a verified 85-inch description when the product title omits size", async () => {

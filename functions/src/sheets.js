@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { priceNumber } from "./ranking.js";
+import { buildPriceHistory } from "./price-history.js";
 
 const scope = "https://www.googleapis.com/auth/spreadsheets";
 
@@ -123,42 +124,58 @@ export async function writeSpecifications(sheets, { spreadsheetId, sheetName }, 
   });
 }
 
-const historyHeaders = ["Checked at (UTC)", "Retailer", "Brand", "Model", "Product link", "Price (€)", "Stock", "Check status"];
-
 export async function appendPriceHistory(sheets, config, observations) {
-  const { spreadsheetId, sheetName, historySheetName = "Price history" } = config;
+  const { spreadsheetId, sheetName, historySheetName = "history" } = config;
   if (historySheetName === sheetName) throw new Error("Price history must use a separate sheet");
-  const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" });
+  const metadata = await sheets.spreadsheets.get({
+    spreadsheetId, fields: "sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))",
+  });
   let sheet = metadata.data.sheets?.find((item) => item.properties?.title === historySheetName)?.properties;
   if (!sheet) {
     const created = await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
-      requestBody: { requests: [{ addSheet: { properties: { title: historySheetName, gridProperties: { frozenRowCount: 1 } } } }] },
+      requestBody: { requests: [{ addSheet: { properties: { title: historySheetName, gridProperties: { frozenRowCount: 1, frozenColumnCount: 4 } } } }] },
     });
     sheet = created.data.replies[0].addSheet.properties;
   }
-  const range = `'${historySheetName.replaceAll("'", "''")}'`;
-  const header = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${range}!A1:H1` });
-  if (header.data.values?.[0]?.some(Boolean)) {
-    if (JSON.stringify(header.data.values[0]) !== JSON.stringify(historyHeaders)) {
-      throw new Error(`Unexpected headers in history sheet: ${historySheetName}`);
-    }
-  } else {
-    await sheets.spreadsheets.values.update({ spreadsheetId, range: `${range}!A1:H1`, valueInputOption: "RAW", requestBody: { values: [historyHeaders] } });
+  const quotedSheet = `'${historySheetName.replaceAll("'", "''")}'`;
+  const previous = await sheets.spreadsheets.values.get({ spreadsheetId, range: quotedSheet, valueRenderOption: "FORMATTED_VALUE" });
+  const existing = previous.data.values || [];
+  const plan = buildPriceHistory(existing, observations);
+  const width = Math.max(plan.values[0].length, ...existing.map((row) => row.length));
+  const height = Math.max(plan.values.length, existing.length);
+  const requests = [];
+  if (plan.migrating) {
+    const base = `${historySheetName.slice(0, 55)} backup ${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    const titles = new Set((metadata.data.sheets || []).map((item) => item.properties?.title));
+    let title = base, suffix = 2;
+    while (titles.has(title)) title = `${base} ${suffix++}`;
+    requests.push({ duplicateSheet: { sourceSheetId: sheet.sheetId, newSheetName: title } });
+    console.log(`HISTORY Converting daily price columns; preserving original checks in ${title}`);
   }
-  if (observations.length) {
-    await sheets.spreadsheets.values.append({
-      spreadsheetId, range: `${range}!A:H`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
-      requestBody: { values: observations.map((item) => [
-        item.checkedAt, item.retailer, item.brand, item.model, item.url,
-        euroNumber(item.price), item.stock || "Unknown", item.error ? `Failed: ${item.error}` : "Checked",
-      ]) },
-    });
-  }
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
-    { repeatCell: { range: { sheetId: sheet.sheetId, startRowIndex: 0, endRowIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: "userEnteredFormat.textFormat.bold" } },
-    { repeatCell: { range: { sheetId: sheet.sheetId, startRowIndex: 1, startColumnIndex: 5, endColumnIndex: 6 }, cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: "€#,##0.00" } } }, fields: "userEnteredFormat.numberFormat" } },
-  ] } });
+  requests.push(
+    { updateSheetProperties: { properties: { sheetId: sheet.sheetId, gridProperties: {
+      rowCount: Math.max(sheet.gridProperties?.rowCount || 1000, height),
+      columnCount: Math.max(sheet.gridProperties?.columnCount || 26, width),
+      frozenRowCount: 1, frozenColumnCount: 4,
+    } }, fields: "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.frozenColumnCount" } },
+    { updateCells: {
+      range: { sheetId: sheet.sheetId, startRowIndex: 0, endRowIndex: height, startColumnIndex: 0, endColumnIndex: width },
+      rows: plan.values.map((row) => ({ values: row.map((value) => value === "" || value == null ? {} : {
+        userEnteredValue: typeof value === "number" ? { numberValue: value } : { stringValue: String(value) },
+      }) })),
+      fields: "userEnteredValue",
+    } },
+    { repeatCell: { range: { sheetId: sheet.sheetId, startRowIndex: 0, endRowIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true }, numberFormat: { type: "TEXT", pattern: "@" } } }, fields: "userEnteredFormat.textFormat.bold,userEnteredFormat.numberFormat" } },
+    { repeatCell: { range: { sheetId: sheet.sheetId, startColumnIndex: 0, endColumnIndex: 4 }, cell: { userEnteredFormat: { numberFormat: { type: "TEXT", pattern: "@" } } }, fields: "userEnteredFormat.numberFormat" } },
+  );
+  if (plan.values[0].length > 4) requests.push({ repeatCell: {
+    range: { sheetId: sheet.sheetId, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: plan.values[0].length },
+    cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: "€#,##0.00" } } }, fields: "userEnteredFormat.numberFormat",
+  } });
+  // Backup, conversion, grid growth, and values commit together in one atomic
+  // Sheets batch. Strings use stringValue so retailer text cannot become formulas.
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
 }
 
 const overallColor = { red: 81 / 255, green: 172 / 255, blue: 183 / 255 };
@@ -237,7 +254,7 @@ export async function appendProducts(
         {
           repeatCell: {
             range: { sheetId: sheet.properties.sheetId, startRowIndex: startRow - 1, endRowIndex: endRow, startColumnIndex: 5, endColumnIndex: 6 },
-            cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: "€#,##0.00" } } },
+            cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: "â‚¬#,##0.00" } } },
             fields: "userEnteredFormat.numberFormat",
           },
         },
