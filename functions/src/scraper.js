@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { checkProductWithGpt } from "./gpt.js";
 
 const unavailablePage = /(?:product|item)\s+(?:not found|no longer available)|listing unavailable/i;
 const blockedPage = /checking your browser|verify you are human|just a moment|request is being verified/i;
@@ -155,7 +156,7 @@ function normalizeOs(value) {
 
 function normalizeSupport(value, positivePattern) {
   const clean = cleanText(value);
-  if (/\b(?:no|not supported|none)\b/i.test(clean)) return "No";
+  if (/\b(?:no|not supported|not available|does not support|unsupported|without|none)\b/i.test(clean)) return "No";
   if (/\b(?:yes|supported|available)\b/i.test(clean) || positivePattern.test(clean)) return "Yes";
   return "";
 }
@@ -288,7 +289,7 @@ async function tryWooStoreApi(url, options) {
   });
   if (!response.ok) throw new Error(`Woo Store API HTTP ${response.status}`);
   const [product] = await response.json();
-  if (!product) return { price: "", stock: "Listing unavailable", title: null, source: "Woo Store API" };
+  if (!product) throw new Error("Woo Store API did not find this product");
   const minorUnit = Number(product.prices?.currency_minor_unit ?? 2);
   const rawPrice = Number(product.prices?.price);
   const price = Number.isFinite(rawPrice) ? formatEuro(rawPrice / 10 ** minorUnit) : null;
@@ -304,12 +305,59 @@ async function tryWooStoreApi(url, options) {
   }, specs);
 }
 
+function gptPrice(value) {
+  if (!value) return null;
+  let amount = value.replace(/€|EUR|euros?/gi, "").replace(/\s/g, "");
+  // European and English decimal/grouping conventions are both used by retailers.
+  if (/^\d{1,3}(?:\.\d{3})*,\d{2}$/.test(amount) || /^\d+,\d{2}$/.test(amount)) {
+    amount = amount.replace(/\./g, "").replace(",", ".");
+  } else if (/^\d{1,3}(?:,\d{3})+(?:\.\d{2})?$/.test(amount)) {
+    amount = amount.replace(/,/g, "");
+  }
+  return /^\d+(?:\.\d{1,2})?$/.test(amount) ? formatEuro(amount) : null;
+}
+
+async function gptResult(url, html, options, parsed) {
+  const facts = await checkProductWithGpt(url, html, options);
+  const price = gptPrice(facts.price);
+  const stock = stockFromAvailability(facts.stock) || (facts.stock ? stockFromText(facts.stock) : null);
+  if (facts.price && !price) throw new Error("GPT price could not be normalized safely");
+  if (facts.stock && !stock) throw new Error("GPT stock could not be normalized safely");
+  if (!price && !stock) throw new Error("GPT could not verify price or stock");
+  // Contradictions require review; never silently replace a confident parsed value.
+  if ((price && parsed?.price && price !== parsed.price) ||
+      (stock && parsed?.stock && stock !== parsed.stock)) {
+    throw new Error("GPT and retailer parser disagree on price or stock");
+  }
+  // Only use fields backed by GPT evidence when checks are enabled. Unknown fields
+  // remain null so the updater preserves the existing price/stock independently.
+  return withTechnicalSpecs({ price, stock, title: facts.title, source: `GPT (${options.openaiModel || "gpt-6.1-sol"})` }, {
+    panelTechnology: normalizePanel(facts.panelTechnology),
+    refreshRate: normalizeRefreshRate(facts.refreshRate),
+    os: normalizeOs(facts.os),
+    vrr: normalizeSupport(facts.vrr, /\b(?:vrr|variable refresh rate|free\s*sync|g-sync)\b/i),
+    hdmi21: normalizeSupport(facts.hdmi21, /\bhdmi\s*2[.]1\b/i),
+  });
+}
+
 export async function scrapeProduct(url, options) {
+  let page;
+  let parsed;
+  let pageError;
   try {
-    const result = await fetchHtml(url, options);
-    if (result.unavailable) return { price: "", stock: "Listing unavailable", title: null, source: "HTTP status" };
-    return parseDocument(result.html);
-  } catch (pageError) {
+    page = await fetchHtml(url, options);
+    if (page.unavailable) return { price: "", stock: "Listing unavailable", title: null, source: "HTTP status" };
+    parsed = parseDocument(page.html);
+  } catch (error) {
+    pageError = error;
+  }
+  if (page && !blockedPage.test(cheerio.load(page.html)("body").text().slice(0, 2_000)) &&
+      options.gptEnabled && parsed?.stock !== "Listing unavailable") {
+    // Keep GPT failures outside the Woo fallback so failed validation cannot be bypassed.
+    return gptResult(url, page.html, options, parsed);
+  }
+  if (parsed) return parsed;
+  if (pageError) {
     try {
       return await tryWooStoreApi(url, options);
     } catch (apiError) {
@@ -318,4 +366,4 @@ export async function scrapeProduct(url, options) {
   }
 }
 
-export const testing = { extractTechnicalSpecs, parseDocument, stockFromAvailability, stockFromText };
+export const testing = { extractTechnicalSpecs, parseDocument, stockFromAvailability, stockFromText, gptPrice };

@@ -7,7 +7,16 @@ const required = (name, fallback) => {
 export function getConfig() {
   const smtpUser = process.env.BREVO_SMTP_USER || process.env.SMTP_USER || "";
   const smtpPass = process.env.BREVO_SMTP_KEY || process.env.SMTP_PASS || "";
+  const openaiApiKey = process.env.OPENAI_API_KEY || "";
+  const gptEnabled = !/^false$/i.test(process.env.GPT_CHECKS_ENABLED || "true") && Boolean(openaiApiKey);
+  if (/^true$/i.test(process.env.GPT_CHECKS_ENABLED || "") && !openaiApiKey) {
+    throw new Error("GPT_CHECKS_ENABLED=true requires OPENAI_API_KEY");
+  }
   return {
+    openaiApiKey,
+    openaiModel: process.env.OPENAI_MODEL || "gpt-6.1-sol",
+    gptEnabled,
+    gptTimeoutMs: Math.max(5_000, Number(process.env.GPT_TIMEOUT_MS || 60_000)),
     spreadsheetId: required(
       "SPREADSHEET_ID",
       "17AeERTQ8IuFSnUPOKv-w9WdNhxInj2glO4QQtDjZTAw",

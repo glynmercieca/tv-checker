@@ -4,6 +4,23 @@ Reads the product links in `Sheet2!E2:E`, checks each retailer, and updates `F:G
 
 The scraper prefers structured product data (JSON-LD), then standard product metadata and focused stock text. For WooCommerce shops it also tries the public Store API. If parsing is uncertain or a retailer presents an anti-bot page, that row is skipped: the existing sheet values are not overwritten.
 
+## GPT product checks
+
+Set `OPENAI_API_KEY` to enable GPT checks automatically. The default model is `gpt-6.1-sol`, selected for its balance of intelligence and cost and support for structured output ([official model documentation](https://developers.openai.com/api/docs/models/gpt-6.1-sol)). No additional npm dependency is required.
+
+GPT reviews fetched product pages, including pages that the markup parser cannot read. It extracts the primary TV's title, current euro price, availability, and technical specifications. Every extracted field must have an exact supporting quote in the supplied page; absent or uncertain facts remain unknown. Related products, instalments, old prices, motion marketing rates, and instructions embedded in retailer pages are excluded by the extraction prompt. Quote checks verify that evidence exists; they cannot guarantee the model interprets it correctly.
+
+When GPT is enabled, only its supported, normalized fields are used. An unknown price or stock preserves that field's existing sheet value. A price/stock disagreement with the parser, API error, refusal, malformed response, or unsupported evidence skips the row. The existing 85-inch title and minimum refresh-rate checks still apply to new listings. HTTP 404/410 and explicit unavailable pages retain their existing handling. GPT cannot read blocked or failed HTTP pages; the public Woo Store API remains the fallback for those pages.
+
+Requests send up to 30,000 characters of retailer page text/metadata to OpenAI, with response storage disabled. Each readable product page requires one paid API request, including during dry runs. Existing scraper concurrency limits also apply to GPT requests.
+
+- `OPENAI_API_KEY`: add as a GitHub Actions repository **secret**, or set locally. Never commit the key.
+- `OPENAI_MODEL`: optional repository variable/environment variable; defaults to `gpt-6.1-sol`. Overrides must support the Responses API, structured output, and low reasoning effort.
+- `GPT_CHECKS_ENABLED=false`: disables GPT even with a key. With no key, the existing scraper runs unchanged; explicitly setting `true` without a key fails configuration.
+- `GPT_TIMEOUT_MS`: local request timeout, defaults to 60,000 milliseconds.
+
+After adding the secret, run the workflow with dry-run enabled and review `GPT` sources and `SKIP` reasons before enabling writes.
+
 Discovery currently covers all retailers represented in the sheet:
 
 - Forestals and Sound Machine: their WooCommerce television catalog APIs.
