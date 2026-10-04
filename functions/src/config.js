@@ -22,7 +22,7 @@ export function getConfig() {
       "17AeERTQ8IuFSnUPOKv-w9WdNhxInj2glO4QQtDjZTAw",
     ),
     sheetName: process.env.SHEET_NAME || "tvs",
-    historySheetName: process.env.HISTORY_SHEET_NAME || "Price history",
+    historySheetName: process.env.SHEET_NAME_2 || process.env.HISTORY_SHEET_NAME || "history",
     budgetLimit: 1200,
     maxDiscoveryPages: 20,
     dryRun: /^true$/i.test(process.env.DRY_RUN || "false"),

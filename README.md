@@ -49,11 +49,11 @@ The transparent specification-based ordering is OLED, RGB Mini LED, other Mini L
 
 ## Price history for November deals
 
-The first non-dry run with observations creates **Price history** (or `HISTORY_SHEET_NAME`) in the same spreadsheet. Every run appends a timestamped row for each existing listing, even when its price has not changed, plus each accepted new listing. Columns are: checked-at UTC timestamp, retailer, brand, model, product link, numeric euro price, stock, and check status. Prices use currency formatting and can be filtered/charted by product link or retailer/model.
+The first non-dry run with observations creates **history** (or `SHEET_NAME_2`) in the same spreadsheet. Every run appends a timestamped row for each existing listing, even when its price has not changed, plus each accepted new listing. Columns are: checked-at UTC timestamp, retailer, brand, model, product link, numeric euro price, stock, and check status. Prices use currency formatting and can be filtered/charted by product link or retailer/model.
 
 Failed checks and unknown prices leave price blank; they never carry a previous price forward as a fresh observation. A later discovery/write failure does not discard completed checks. The history is append-only, continues through November 2026 and beyond, and is never erased by later runs. Logging starts with the next non-dry run; earlier price history cannot be reconstructed. Dry runs compute recommendations and observation counts but do not create tabs, change formatting, or write history.
 
-If an existing history tab has different headers, the checker reports an error rather than overwriting it. Choose a separate tab via `HISTORY_SHEET_NAME` if needed.
+If an existing history tab has different headers, the checker reports an error rather than overwriting it. Choose a separate tab via `SHEET_NAME_2` if needed. The older `HISTORY_SHEET_NAME` variable remains a fallback when `SHEET_NAME_2` is unset; otherwise the default is `history`.
 
 ## Email service: Brevo Free
 
@@ -82,6 +82,7 @@ GitHub Actions is the simplest option for this workload. The included workflow r
    - Add repository secret `OPENAI_API_KEY` to enable GPT checks.
    - Add repository variable `SPREADSHEET_ID` = `17AeERTQ8IuFSnUPOKv-w9WdNhxInj2glO4QQtDjZTAw`.
    - Add repository variable `SHEET_NAME` = `tvs` (the renamed product tab).
+   - Add repository variable `SHEET_NAME_2` = `history` (the price-history tab). Enter the value without quotation marks.
    - Add repository variable `EMAIL_FROM` = `TV Monitor <your-verified-sender@example.com>`.
 6. Open **Actions → Update TV prices and stock → Run workflow**, keep dry-run enabled, and review the log.
 7. Run again with dry-run disabled. Scheduled runs write changes automatically.

@@ -2,6 +2,26 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { getConfig } from "../src/config.js";
 
+test("SHEET_NAME_2 selects the history tab and takes priority over the legacy variable", () => {
+  const keys = ["SHEET_NAME_2", "HISTORY_SHEET_NAME"];
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  try {
+    for (const key of keys) delete process.env[key];
+    assert.equal(getConfig().historySheetName, "history");
+    process.env.HISTORY_SHEET_NAME = "Legacy history";
+    assert.equal(getConfig().historySheetName, "Legacy history");
+    process.env.SHEET_NAME_2 = "history";
+    assert.equal(getConfig().historySheetName, "history");
+    process.env.SHEET_NAME_2 = "Price log";
+    assert.equal(getConfig().historySheetName, "Price log");
+  } finally {
+    for (const key of keys) {
+      if (previous[key] == null) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  }
+});
+
 test("defaults to the renamed tvs tab and preserves explicit tab overrides", () => {
   const previous = process.env.SHEET_NAME;
   try {
